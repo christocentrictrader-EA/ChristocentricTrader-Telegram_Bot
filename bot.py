@@ -1,34 +1,34 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+import os
+from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-import logging
-from logging.handlers import RotatingFileHandler
 
-# Logging setup with rotation
-file_handler = RotatingFileHandler("bot.log", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-    handlers=[logging.StreamHandler(), file_handler]
-)
-logging.getLogger("telegram").setLevel(logging.DEBUG)
-logging.getLogger("telegram.ext").setLevel(logging.DEBUG)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("asyncio").setLevel(logging.WARNING)
+# Load BOT_TOKEN from environment variable
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("Open WebApp", url="https://christocentrictrader.d9thprofithub.com.ng")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Welcome! Tap below to open the WebApp:", reply_markup=reply_markup)
+# Simple start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("Hello! I am your ChristocentricTrader bot, ready to serve.")
+
+# Example scheduled job
+async def scheduled_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    await context.bot.send_message(
+        chat_id=context.job.chat_id,
+        text="This is a scheduled message from the bot."
+    )
+
+def main():
+    # Build the application
+    application = Application.builder().token(BOT_TOKEN).build()
+
+    # Add command handlers
+    application.add_handler(CommandHandler("start", start))
+
+    # Schedule a repeating job (every 10 seconds for demo)
+    job_queue = application.job_queue
+    job_queue.run_repeating(scheduled_job, interval=10, first=10, chat_id=123456789)
+
+    # Run the bot
+    application.run_polling()
 
 if __name__ == "__main__":
-    app = (
-        Application.builder()
-        .token("8496752004:AAEEEWE08jO9Wv9WqT_ygs8KyG_y9_Vctmk")
-        .connect_timeout(30)
-        .read_timeout(30)
-        .write_timeout(30)
-        .build()
-    )
-    app.add_handler(CommandHandler("start", start))
-    app.run_polling()
+    main()
