@@ -1,0 +1,22 @@
+# Ignore logs
+bot.log
+
+# Ignore caches and storage
+storage/
+.cache/
+.npm/
+.pyenv/
+
+# Ignore other repos/projects
+christocentrictrader-backend/
+christocentrictrader-frontend/
+backend/
+frontend/
+
+# Ignore images if not needed
+logo.png
+christocentrictrader_logo.png
+
+# Ignore Python junk
+__pycache__/
+*.pyc
