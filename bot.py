@@ -2,7 +2,7 @@ import os
 import datetime
 import logging
 import requests
-import json
+import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -16,23 +16,37 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBAPP_URL = os.getenv("WEBAPP_URL")
 ALPHA_KEY = os.getenv("ALPHA_KEY")  # Add this in Railway Variables
 
-SUBSCRIBERS_FILE = "subscribers.json"
+DB_FILE = "subscribers.db"
 
-# Load subscribers from file
-def load_subscribers():
-    try:
-        with open(SUBSCRIBERS_FILE, "r") as f:
-            return set(json.load(f))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return set()
+# Database setup
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS subscribers (chat_id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
 
-# Save subscribers to file
-def save_subscribers():
-    with open(SUBSCRIBERS_FILE, "w") as f:
-        json.dump(list(subscribers), f)
+def add_subscriber(chat_id):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO subscribers (chat_id) VALUES (?)", (chat_id,))
+    conn.commit()
+    conn.close()
 
-# Initialize subscribers
-subscribers = load_subscribers()
+def remove_subscriber(chat_id):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM subscribers WHERE chat_id = ?", (chat_id,))
+    conn.commit()
+    conn.close()
+
+def get_subscribers():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT chat_id FROM subscribers")
+    rows = c.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
 
 # Shared function for sending the trading signal
 async def send_trading_signal(bot, chat_id: int, source: str) -> None:
@@ -67,7 +81,7 @@ def get_market_news():
 
 # Daily scheduled job
 async def daily_message(context: ContextTypes.DEFAULT_TYPE) -> None:
-    for chat_id in subscribers:
+    for chat_id in get_subscribers():
         await send_trading_signal(context.bot, chat_id, source="scheduled job")
 
 # Button handler
@@ -90,8 +104,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # /start command (subscribe)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.message.chat_id
-    subscribers.add(chat_id)
-    save_subscribers()  # persist change
+    add_subscriber(chat_id)
 
     keyboard = [
         [
@@ -115,14 +128,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # /stop command (unsubscribe)
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.message.chat_id
-    if chat_id in subscribers:
-        subscribers.remove(chat_id)
-        save_subscribers()  # persist change
-        await update.message.reply_text("❌ You have unsubscribed from daily alerts.")
-    else:
-        await update.message.reply_text("You are not currently subscribed.")
+    remove_subscriber(chat_id)
+    await update.message.reply_text("❌ You have unsubscribed from daily alerts.")
 
 def main():
+    init_db()
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stop", stop))
