@@ -2,7 +2,7 @@ import os
 import datetime
 import logging
 import requests
-import sqlite3
+import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -14,34 +14,41 @@ logging.basicConfig(
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBAPP_URL = os.getenv("WEBAPP_URL")
-ALPHA_KEY = os.getenv("ALPHA_KEY")  # Add this in Railway Variables
+ALPHA_KEY = os.getenv("ALPHA_KEY")  # You set this in Railway Variables or .env
 
-DB_FILE = "subscribers.db"
+# PostgreSQL connection
+def get_connection():
+    return psycopg2.connect(
+        host=os.getenv("PGHOST"),
+        port=os.getenv("PGPORT"),
+        database=os.getenv("PGDATABASE"),
+        user=os.getenv("PGUSER"),
+        password=os.getenv("PGPASSWORD")
+    )
 
-# Database setup
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_connection()
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS subscribers (chat_id INTEGER PRIMARY KEY)")
+    c.execute("CREATE TABLE IF NOT EXISTS subscribers (chat_id BIGINT PRIMARY KEY)")
     conn.commit()
     conn.close()
 
 def add_subscriber(chat_id):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_connection()
     c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO subscribers (chat_id) VALUES (?)", (chat_id,))
+    c.execute("INSERT INTO subscribers (chat_id) VALUES (%s) ON CONFLICT DO NOTHING", (chat_id,))
     conn.commit()
     conn.close()
 
 def remove_subscriber(chat_id):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_connection()
     c = conn.cursor()
-    c.execute("DELETE FROM subscribers WHERE chat_id = ?", (chat_id,))
+    c.execute("DELETE FROM subscribers WHERE chat_id = %s", (chat_id,))
     conn.commit()
     conn.close()
 
 def get_subscribers():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT chat_id FROM subscribers")
     rows = c.fetchall()
