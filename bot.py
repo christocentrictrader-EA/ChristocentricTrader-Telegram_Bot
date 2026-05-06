@@ -1,155 +1,134 @@
+import pytz
 import os
+import json
+import random
 import datetime
-import logging
 import requests
-import psycopg2
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Updater
+from apscheduler.schedulers.background import BackgroundScheduler
+from dotenv import load_dotenv
 
-# Configure logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-
+# Load environment variables
+load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBAPP_URL = os.getenv("WEBAPP_URL")
-ALPHA_KEY = os.getenv("ALPHA_KEY")  # You set this in Railway Variables or .env
+CHAT_ID = os.getenv("CHAT_ID")
 
-# PostgreSQL connection
-def get_connection():
-    return psycopg2.connect(
-        host=os.getenv("PGHOST"),
-        port=os.getenv("PGPORT"),
-        database=os.getenv("PGDATABASE"),
-        user=os.getenv("PGUSER"),
-        password=os.getenv("PGPASSWORD")
-    )
+# Load content.json
+with open("content.json", "r") as f:
+    content = json.load(f)
 
-def init_db():
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS subscribers (chat_id BIGINT PRIMARY KEY)")
-    conn.commit()
-    conn.close()
-
-def add_subscriber(chat_id):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("INSERT INTO subscribers (chat_id) VALUES (%s) ON CONFLICT DO NOTHING", (chat_id,))
-    conn.commit()
-    conn.close()
-
-def remove_subscriber(chat_id):
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM subscribers WHERE chat_id = %s", (chat_id,))
-    conn.commit()
-    conn.close()
-
-def get_subscribers():
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT chat_id FROM subscribers")
-    rows = c.fetchall()
-    conn.close()
-    return [row[0] for row in rows]
-
-# Shared function for sending the trading signal
-async def send_trading_signal(bot, chat_id: int, source: str) -> None:
-    logging.info(f"Trading signal sent via {source} to chat_id={chat_id}")
-    await bot.send_message(
-        chat_id=chat_id,
-        text="📊 Trading signal: Stay Christocentric in your trades!"
-    )
-
-# Bible Verse of the Day
-def get_bible_verse():
-    url = "https://labs.bible.org/api/?passage=votd&type=json"
-    response = requests.get(url)
-    data = response.json()[0]
-    return f"📖 {data['bookname']} {data['chapter']}:{data['verse']} - {data['text']}"
-
-# Market News
-def get_market_news():
-    url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "NEWS_SENTIMENT",
-        "tickers": "ALL",
-        "apikey": ALPHA_KEY
+# Load or create log.json
+try:
+    with open("log.json", "r") as f:
+        log = json.load(f)
+except FileNotFoundError:
+    log = {
+        "gm_used": [],
+        "trading_used": [],
+        "verses_used": [],
+        "quotes_used": [],
+        "prayers_used": [],
+        "reminders_used": []
     }
-    response = requests.get(url, params=params)
-    feed = response.json().get("feed", [])
-    if feed:
-        item = feed[0]
-        return f"📰 {item['title']}\n{item['summary']}\nRead more: {item['url']}"
-    else:
-        return "📰 No market news available right now."
 
-# Daily scheduled job
-async def daily_message(context: ContextTypes.DEFAULT_TYPE) -> None:
-    for chat_id in get_subscribers():
-        await send_trading_signal(context.bot, chat_id, source="scheduled job")
+# --- Utility: rotation with logging ---
+def rotate_and_log(section, log_key):
+    items = content.get(section, [])
+    if not items:
+        return {"message": "⚠️ No content available."}
+    unused = [i for i in range(len(items)) if i not in log[log_key]]
+    if not unused:
+        log[log_key] = []
+        unused = list(range(len(items)))
+    choice = random.choice(unused)
+    log[log_key].append(choice)
+    with open("log.json", "w") as f:
+        json.dump(log, f)
+    return items[choice]
 
-# Button handler
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    if query.data == "help":
-        await query.edit_message_text(
-            text="Available commands:\n/start - Subscribe & launch bot\n/stop - Unsubscribe\n/daily - Daily trading alert"
-        )
-    elif query.data == "signal":
-        await send_trading_signal(context.bot, query.message.chat_id, source="inline button")
-    elif query.data == "verse":
-        verse = get_bible_verse()
-        await query.edit_message_text(text=verse)
-    elif query.data == "news":
-        news = get_market_news()
-        await query.edit_message_text(text=news)
+# --- Jobs ---
+def good_morning_job(context):
+    message = rotate_and_log("good_morning", "gm_used")["message"]
+    context.bot.send_message(chat_id=CHAT_ID, text=message)
 
-# /start command (subscribe)
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat_id = update.message.chat_id
-    add_subscriber(chat_id)
+def verse_of_the_day_job(context):
+    try:
+        ref = rotate_and_log("verses", "verses_used")
+        response = requests.get(f"https://bible-api.com/{ref.replace(' ', '+')}", timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        verse_text = data["text"]
+        message = f"✨ Verse of the Day:\n{verse_text.strip()}\n📖 {ref}"
+    except Exception:
+        verse = rotate_and_log("verses", "verses_used")
+        message = f"✨ Verse of the Day (Fallback):\n{verse}"
+    context.bot.send_message(chat_id=CHAT_ID, text=message)
 
-    keyboard = [
-        [
-            InlineKeyboardButton("Open Trading WebApp", web_app={"url": WEBAPP_URL}),
-            InlineKeyboardButton("Help", callback_data="help")
-        ],
-        [
-            InlineKeyboardButton("Daily Signal", callback_data="signal")
-        ],
-        [
-            InlineKeyboardButton("Bible Verse", callback_data="verse"),
-            InlineKeyboardButton("Market News", callback_data="news")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "Hello Digital! Your ChristocentricTrader bot is live and running.\n✅ You are now subscribed to daily alerts.",
-        reply_markup=reply_markup
-    )
+def daily_scripture_job(context):
+    scripture = rotate_and_log("daily_scriptures", "verses_used")
+    context.bot.send_message(chat_id=CHAT_ID, text=f"📖 Daily Scripture:\n{scripture}")
 
-# /stop command (unsubscribe)
-async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat_id = update.message.chat_id
-    remove_subscriber(chat_id)
-    await update.message.reply_text("❌ You have unsubscribed from daily alerts.")
+def trading_job(context):
+    idea = rotate_and_log("trading", "trading_used")
+    message = f"💹 Trading Idea:\n{idea['idea']}\n\n📖 {idea['scripture']}"
+    context.bot.send_message(chat_id=CHAT_ID, text=message)
 
+def quote_job(context):
+    quote = rotate_and_log("quotes", "quotes_used")
+    context.bot.send_message(chat_id=CHAT_ID, text=f"🌟 Motivation:\n{quote}")
+
+def prayer_job(context):
+    prayer = rotate_and_log("prayers", "prayers_used")
+    context.bot.send_message(chat_id=CHAT_ID, text=prayer)
+
+def reminder_job(context):
+    reminder = rotate_and_log("reminders", "reminders_used")
+    context.bot.send_message(chat_id=CHAT_ID, text=reminder)
+
+# --- Seasonal Emojis ---
+seasonal_emojis = {
+    "Christmas": "🎄✨",
+    "New Year": "🎉🥂",
+    "Easter": "✝️🌅",
+    "Ramadan": "🌙🕌",
+    "Thanksgiving": "🦃🍂",
+    "Valentine": "❤️🌹"
+}
+
+def seasonal_job(context):
+    today = datetime.date.today().strftime("%m-%d")
+    for event in content.get("seasonal", []):
+        if event["date"] == today:
+            # Add emoji theme based on keyword in message
+            emojis = "✨"
+            for keyword, emoji in seasonal_emojis.items():
+                if keyword.lower() in event["message"].lower():
+                    emojis = emoji
+                    break
+            message = f"{emojis} {event['message']}"
+            context.bot.send_message(chat_id=CHAT_ID, text=message)
+            return
+
+# --- Main ---
 def main():
-    init_db()
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stop", stop))
-    application.add_handler(CallbackQueryHandler(button_handler))
+    updater = Updater(BOT_TOKEN)
+    scheduler = BackgroundScheduler(timezone=pytz.timezone("Africa/Lagos"))
 
-    # Schedule daily job at 9 AM
-    job_queue = application.job_queue
-    job_queue.run_daily(daily_message, time=datetime.time(hour=9, minute=0))
+    # Daily rhythm
+    scheduler.add_job(good_morning_job, 'cron', hour=4, minute=30, args=[updater.bot])
+    scheduler.add_job(verse_of_the_day_job, 'cron', hour=6, minute=0, args=[updater.bot])
+    scheduler.add_job(daily_scripture_job, 'cron', hour=7, minute=0, args=[updater.bot])
+    scheduler.add_job(trading_job, 'cron', hour=9, minute=0, args=[updater.bot])
+    scheduler.add_job(quote_job, 'cron', hour=12, minute=0, args=[updater.bot])
+    scheduler.add_job(prayer_job, 'cron', hour=15, minute=0, args=[updater.bot])
+    scheduler.add_job(reminder_job, 'cron', hour=18, minute=0, args=[updater.bot])
 
-    application.run_polling()
+    # Seasonal check (runs daily at 4:30 AM, overrides Good Morning if matched)
+    scheduler.add_job(seasonal_job, 'cron', hour=4, minute=30, args=[updater.bot])
+
+    scheduler.start()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
