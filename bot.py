@@ -99,7 +99,6 @@ def seasonal_job(context):
     today = datetime.date.today().strftime("%m-%d")
     for event in content.get("seasonal", []):
         if event["date"] == today:
-            # Add emoji theme based on keyword in message
             emojis = "✨"
             for keyword, emoji in seasonal_emojis.items():
                 if keyword.lower() in event["message"].lower():
@@ -114,6 +113,12 @@ def main():
     updater = Updater(BOT_TOKEN)
     scheduler = BackgroundScheduler(timezone=pytz.timezone("Africa/Lagos"))
 
+    # --- Startup test message ---
+    updater.bot.send_message(
+        chat_id=CHAT_ID,
+        text="✅ ChristocentricTraderBot is live and running!"
+    )
+
     # Daily rhythm
     scheduler.add_job(good_morning_job, 'cron', hour=4, minute=30, args=[updater.bot])
     scheduler.add_job(verse_of_the_day_job, 'cron', hour=6, minute=0, args=[updater.bot])
@@ -123,9 +128,10 @@ def main():
     scheduler.add_job(prayer_job, 'cron', hour=15, minute=0, args=[updater.bot])
     scheduler.add_job(reminder_job, 'cron', hour=18, minute=0, args=[updater.bot])
 
-    # Seasonal check (runs daily at 4:30 AM, overrides Good Morning if matched)
+    # Seasonal check
     scheduler.add_job(seasonal_job, 'cron', hour=4, minute=30, args=[updater.bot])
 
+    # --- Keep everything running ---
     scheduler.start()
     updater.start_polling()
     updater.idle()
