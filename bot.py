@@ -31,7 +31,8 @@ except FileNotFoundError:
         "quotes_used": [],
         "prayers_used": [],
         "reminders_used": [],
-        "catchup_log": []   # <-- new section for catch-up tracking
+        "catchup_log": [],
+        "catchup_done": ""   # safeguard flag
     }
 
 # --- Utility: rotation with logging ---
@@ -49,7 +50,7 @@ def rotate_and_log(section, log_key):
         json.dump(log, f)
     return items[choice]
 
-# --- Jobs ---
+# --- Message builders ---
 def good_morning_message():
     return rotate_and_log("good_morning", "gm_used")["message"]
 
@@ -116,11 +117,18 @@ def log_catchup(job_name, timestamp):
 
 def catch_up_jobs(bot):
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
-    timestamp = now.strftime("%I:%M %p")  # e.g. "07:43 AM"
-    hour = now.hour
-    minute = now.minute
+    today = now.strftime("%Y-%m-%d")
+    timestamp = now.strftime("%I:%M %p")
 
-    if hour > 4 or (hour == 4 and minute >= 30):
+    # Safeguard: only run once per day
+    if log.get("catchup_done") == today:
+        return
+
+    log["catchup_done"] = today
+    with open("log.json", "w") as f:
+        json.dump(log, f)
+
+    if now.hour > 4 or (now.hour == 4 and now.minute >= 30):
         msg = good_morning_message()
         bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Good Morning\n\n{msg}")
         log_catchup("Good Morning", timestamp)
@@ -129,35 +137,21 @@ def catch_up_jobs(bot):
             bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Seasonal\n\n{seasonal}")
             log_catchup("Seasonal", timestamp)
 
-    if hour >= 6:
+    if now.hour >= 6:
         msg = verse_of_the_day_message()
         bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Verse of the Day\n\n{msg}")
         log_catchup("Verse of the Day", timestamp)
 
-    if hour >= 7:
+    if now.hour >= 7:
         msg = daily_scripture_message()
         bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Daily Scripture\n\n{msg}")
         log_catchup("Daily Scripture", timestamp)
 
-    if hour >= 9:
-        msg = trading_message()
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Trading Idea\n\n{msg}")
-        log_catchup("Trading Idea", timestamp)
-
-    if hour >= 12:
-        msg = quote_message()
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Motivation Quote\n\n{msg}")
-        log_catchup("Motivation Quote", timestamp)
-
-    if hour >= 15:
-        msg = prayer_message()
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Prayer\n\n{msg}")
-        log_catchup("Prayer", timestamp)
-
-    if hour >= 18:
-        msg = reminder_message()
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Reminder\n\n{msg}")
-        log_catchup("Reminder", timestamp)
+# --- Midnight Reset ---
+def reset_catchup_flag():
+    log["catchup_done"] = ""
+    with open("log.json", "w") as f:
+        json.dump(log, f)
 
 # --- Main ---
 def main():
@@ -182,6 +176,9 @@ def main():
     scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, prayer_message()), 'cron', hour=15, minute=0)
     scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, reminder_message()), 'cron', hour=18, minute=0)
     scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, seasonal_message()), 'cron', hour=4, minute=30)
+
+    # Midnight reset of catch-up flag
+    scheduler.add_job(reset_catchup_flag, 'cron', hour=0, minute=0)
 
     scheduler.start()
 
