@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-APP_URL = os.getenv("APP_URL")  # e.g. https://worker-production-25e7.up.railway.app
+APP_URL = os.getenv("APP_URL")
 PORT = int(os.environ.get("PORT", 8443))
 
 # Load content.json
@@ -32,7 +32,8 @@ except FileNotFoundError:
         "prayers_used": [],
         "reminders_used": [],
         "catchup_log": [],
-        "catchup_done": ""   # safeguard flag
+        "catchup_done": "",
+        "startup_done": ""   # <-- safeguard for startup message
     }
 
 # --- Utility: rotation with logging ---
@@ -120,7 +121,6 @@ def catch_up_jobs(bot):
     today = now.strftime("%Y-%m-%d")
     timestamp = now.strftime("%I:%M %p")
 
-    # Safeguard: only run once per day
     if log.get("catchup_done") == today:
         return
 
@@ -148,8 +148,9 @@ def catch_up_jobs(bot):
         log_catchup("Daily Scripture", timestamp)
 
 # --- Midnight Reset ---
-def reset_catchup_flag():
+def reset_flags():
     log["catchup_done"] = ""
+    log["startup_done"] = ""
     with open("log.json", "w") as f:
         json.dump(log, f)
 
@@ -158,27 +159,29 @@ def main():
     updater = Updater(BOT_TOKEN)
     scheduler = BackgroundScheduler(timezone=pytz.timezone("Africa/Lagos"))
 
-    # Startup test message
-    updater.bot.send_message(
-        chat_id=CHAT_ID,
-        text="✅ ChristocentricTraderBot is live via webhook!"
-    )
+    # Startup message safeguard
+    today = datetime.datetime.now(pytz.timezone("Africa/Lagos")).strftime("%Y-%m-%d")
+    if log.get("startup_done") != today:
+        updater.bot.send_message(chat_id=CHAT_ID, text="✅ ChristocentricTraderBot is live via webhook!")
+        log["startup_done"] = today
+        with open("log.json", "w") as f:
+            json.dump(log, f)
 
-    # --- Catch up missed jobs ---
+    # Catch up missed jobs
     catch_up_jobs(updater.bot)
 
-    # Daily rhythm
-    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, good_morning_message()), 'cron', hour=4, minute=30)
-    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, verse_of_the_day_message()), 'cron', hour=6, minute=0)
-    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, daily_scripture_message()), 'cron', hour=7, minute=0)
-    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, trading_message()), 'cron', hour=9, minute=0)
-    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, quote_message()), 'cron', hour=12, minute=0)
-    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, prayer_message()), 'cron', hour=15, minute=0)
-    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, reminder_message()), 'cron', hour=18, minute=0)
-    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, seasonal_message()), 'cron', hour=4, minute=30)
+    # Daily rhythm (no ctx argument needed)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, good_morning_message()), 'cron', hour=4, minute=30)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, verse_of_the_day_message()), 'cron', hour=6, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, daily_scripture_message()), 'cron', hour=7, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, trading_message()), 'cron', hour=9, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, quote_message()), 'cron', hour=12, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, prayer_message()), 'cron', hour=15, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, reminder_message()), 'cron', hour=18, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, seasonal_message()), 'cron', hour=4, minute=30)
 
-    # Midnight reset of catch-up flag
-    scheduler.add_job(reset_catchup_flag, 'cron', hour=0, minute=0)
+    # Midnight reset of flags
+    scheduler.add_job(reset_flags, 'cron', hour=0, minute=0)
 
     scheduler.start()
 
