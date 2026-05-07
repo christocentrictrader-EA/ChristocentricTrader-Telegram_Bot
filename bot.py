@@ -33,7 +33,7 @@ except FileNotFoundError:
         "reminders_used": [],
         "catchup_log": [],
         "catchup_done": "",
-        "startup_done": ""   # <-- safeguard for startup message
+        "startup_done": ""
     }
 
 # --- Utility: rotation with logging ---
@@ -51,9 +51,14 @@ def rotate_and_log(section, log_key):
         json.dump(log, f)
     return items[choice]
 
-# --- Message builders ---
+# --- Message builders with Markdown formatting ---
 def good_morning_message():
-    return rotate_and_log("good_morning", "gm_used")["message"]
+    gm = rotate_and_log("good_morning", "gm_used")
+    return (
+        "*🌺 Good Morning!*\n"
+        "_"+gm["message"]+"_ \n"
+        "'reference': __"+gm["reference"]+"__"
+    )
 
 def verse_of_the_day_message():
     try:
@@ -62,30 +67,56 @@ def verse_of_the_day_message():
         response.raise_for_status()
         data = response.json()
         verse_text = data["text"]
-        return f"✨ Verse of the Day:\n{verse_text.strip()}\n📖 {ref}"
+        return (
+            "*✨ Verse of the Day:*\n"
+            "'verse': _"+verse_text.strip()+"_\n"
+            "'reference': __"+ref+"__"
+        )
     except Exception:
         verse = rotate_and_log("verses", "verses_used")
-        return f"✨ Verse of the Day (Fallback):\n{verse}"
+        return (
+            "*✨ Verse of the Day (Fallback):*\n"
+            "'verse': _"+verse+"_"
+        )
 
 def daily_scripture_message():
     scripture = rotate_and_log("daily_scriptures", "verses_used")
-    return f"📖 Daily Scripture:\n{scripture}"
+    return (
+        "*📖 Daily Scripture:*\n"
+        "'scripture': _"+scripture["text"]+"_ \n"
+        "'reference': __"+scripture["scripture"]+"__\n"
+        "'reflection': _"+scripture["reflection"]+"_"
+    )
 
 def trading_message():
     idea = rotate_and_log("trading", "trading_used")
-    return f"💹 Trading Idea:\n{idea['idea']}\n\n📖 {idea['scripture']}"
+    return (
+        "*💹 Trading Idea:*\n"
+        "'idea': _"+idea["idea"]+"_ \n"
+        "'scripture': __"+idea["scripture"]+"__"
+    )
 
 def quote_message():
-    quote = rotate_and_log("quotes", "quotes_used")
-    return f"🌟 Motivation:\n{quote}"
+    quote_obj = rotate_and_log("quotes", "quotes_used")
+    return (
+        "*🌟 Motivation:*\n"
+        "'quote': _"+quote_obj["quote"]+"_ \n"
+        "'author': __"+quote_obj["author"]+"__"
+    )
 
 def prayer_message():
     prayer = rotate_and_log("prayers", "prayers_used")
-    return prayer
+    return (
+        "*🙏 Prayer:*\n"
+        "_"+prayer+"_"
+    )
 
 def reminder_message():
     reminder = rotate_and_log("reminders", "reminders_used")
-    return reminder
+    return (
+        "*⏰ Reminder:*\n"
+        "_"+reminder+"_"
+    )
 
 # --- Seasonal Emojis ---
 seasonal_emojis = {
@@ -106,7 +137,10 @@ def seasonal_message():
                 if keyword.lower() in event["message"].lower():
                     emojis = emoji
                     break
-            return f"{emojis} {event['message']}"
+            return (
+                "*"+emojis+" Seasonal Message:*\n"
+                "_"+event["message"]+"_"
+            )
     return None
 
 # --- Catch-Up Logic ---
@@ -129,22 +163,19 @@ def catch_up_jobs(bot):
         json.dump(log, f)
 
     if now.hour > 4 or (now.hour == 4 and now.minute >= 30):
-        msg = good_morning_message()
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Good Morning\n\n{msg}")
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Good Morning\n\n{good_morning_message()}", parse_mode="Markdown")
         log_catchup("Good Morning", timestamp)
         seasonal = seasonal_message()
         if seasonal:
-            bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Seasonal\n\n{seasonal}")
+            bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Seasonal\n\n{seasonal}", parse_mode="Markdown")
             log_catchup("Seasonal", timestamp)
 
     if now.hour >= 6:
-        msg = verse_of_the_day_message()
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Verse of the Day\n\n{msg}")
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Verse of the Day\n\n{verse_of_the_day_message()}", parse_mode="Markdown")
         log_catchup("Verse of the Day", timestamp)
 
     if now.hour >= 7:
-        msg = daily_scripture_message()
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Daily Scripture\n\n{msg}")
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Daily Scripture\n\n{daily_scripture_message()}", parse_mode="Markdown")
         log_catchup("Daily Scripture", timestamp)
 
 # --- Midnight Reset ---
@@ -162,7 +193,7 @@ def main():
     # Startup message safeguard
     today = datetime.datetime.now(pytz.timezone("Africa/Lagos")).strftime("%Y-%m-%d")
     if log.get("startup_done") != today:
-        updater.bot.send_message(chat_id=CHAT_ID, text="✅ ChristocentricTraderBot is live via webhook!")
+        updater.bot.send_message(chat_id=CHAT_ID, text="✅ ChristocentricTraderBot is live via webhook!", parse_mode="Markdown")
         log["startup_done"] = today
         with open("log.json", "w") as f:
             json.dump(log, f)
@@ -170,15 +201,15 @@ def main():
     # Catch up missed jobs
     catch_up_jobs(updater.bot)
 
-    # Daily rhythm (no ctx argument needed)
-    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, good_morning_message()), 'cron', hour=4, minute=30)
-    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, verse_of_the_day_message()), 'cron', hour=6, minute=0)
-    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, daily_scripture_message()), 'cron', hour=7, minute=0)
-    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, trading_message()), 'cron', hour=9, minute=0)
-    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, quote_message()), 'cron', hour=12, minute=0)
-    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, prayer_message()), 'cron', hour=15, minute=0)
-    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, reminder_message()), 'cron', hour=18, minute=0)
-    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, seasonal_message()), 'cron', hour=4, minute=30)
+    # Daily rhythm with Markdown formatting
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, good_morning_message(), parse_mode="Markdown"), 'cron', hour=4, minute=30)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, verse_of_the_day_message(), parse_mode="Markdown"), 'cron', hour=6, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, daily_scripture_message(), parse_mode="Markdown"), 'cron', hour=7, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, trading_message(), parse_mode="Markdown"), 'cron', hour=9, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, quote_message(), parse_mode="Markdown"), 'cron', hour=12, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, prayer_message(), parse_mode="Markdown"), 'cron', hour=15, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, reminder_message(), parse_mode="Markdown"), 'cron', hour=18, minute=0)
+    scheduler.add_job(lambda: updater.bot.send_message(CHAT_ID, seasonal_message(), parse_mode="Markdown"), 'cron', hour=4, minute=30)
 
     # Midnight reset of flags
     scheduler.add_job(reset_flags, 'cron', hour=0, minute=0)
@@ -191,7 +222,6 @@ def main():
         port=PORT,
         url_path=BOT_TOKEN,
         webhook_url=f"{APP_URL}/{BOT_TOKEN}"
-    )
 
     updater.idle()
 
