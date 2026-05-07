@@ -50,43 +50,40 @@ def rotate_and_log(section, log_key):
     return items[choice]
 
 # --- Jobs ---
-def good_morning_job(context):
-    message = rotate_and_log("good_morning", "gm_used")["message"]
-    context.bot.send_message(chat_id=CHAT_ID, text=message)
+def good_morning_message():
+    return rotate_and_log("good_morning", "gm_used")["message"]
 
-def verse_of_the_day_job(context):
+def verse_of_the_day_message():
     try:
         ref = rotate_and_log("verses", "verses_used")
         response = requests.get(f"https://bible-api.com/{ref.replace(' ', '+')}", timeout=5)
         response.raise_for_status()
         data = response.json()
         verse_text = data["text"]
-        message = f"✨ Verse of the Day:\n{verse_text.strip()}\n📖 {ref}"
+        return f"✨ Verse of the Day:\n{verse_text.strip()}\n📖 {ref}"
     except Exception:
         verse = rotate_and_log("verses", "verses_used")
-        message = f"✨ Verse of the Day (Fallback):\n{verse}"
-    context.bot.send_message(chat_id=CHAT_ID, text=message)
+        return f"✨ Verse of the Day (Fallback):\n{verse}"
 
-def daily_scripture_job(context):
+def daily_scripture_message():
     scripture = rotate_and_log("daily_scriptures", "verses_used")
-    context.bot.send_message(chat_id=CHAT_ID, text=f"📖 Daily Scripture:\n{scripture}")
+    return f"📖 Daily Scripture:\n{scripture}"
 
-def trading_job(context):
+def trading_message():
     idea = rotate_and_log("trading", "trading_used")
-    message = f"💹 Trading Idea:\n{idea['idea']}\n\n📖 {idea['scripture']}"
-    context.bot.send_message(chat_id=CHAT_ID, text=message)
+    return f"💹 Trading Idea:\n{idea['idea']}\n\n📖 {idea['scripture']}"
 
-def quote_job(context):
+def quote_message():
     quote = rotate_and_log("quotes", "quotes_used")
-    context.bot.send_message(chat_id=CHAT_ID, text=f"🌟 Motivation:\n{quote}")
+    return f"🌟 Motivation:\n{quote}"
 
-def prayer_job(context):
+def prayer_message():
     prayer = rotate_and_log("prayers", "prayers_used")
-    context.bot.send_message(chat_id=CHAT_ID, text=prayer)
+    return prayer
 
-def reminder_job(context):
+def reminder_message():
     reminder = rotate_and_log("reminders", "reminders_used")
-    context.bot.send_message(chat_id=CHAT_ID, text=reminder)
+    return reminder
 
 # --- Seasonal Emojis ---
 seasonal_emojis = {
@@ -98,7 +95,7 @@ seasonal_emojis = {
     "Valentine": "❤️🌹"
 }
 
-def seasonal_job(context):
+def seasonal_message():
     today = datetime.date.today().strftime("%m-%d")
     for event in content.get("seasonal", []):
         if event["date"] == today:
@@ -107,9 +104,8 @@ def seasonal_job(context):
                 if keyword.lower() in event["message"].lower():
                     emojis = emoji
                     break
-            message = f"{emojis} {event['message']}"
-            context.bot.send_message(chat_id=CHAT_ID, text=message)
-            return
+            return f"{emojis} {event['message']}"
+    return None
 
 # --- Catch-Up Logic ---
 def log_catchup(job_name, timestamp):
@@ -120,44 +116,47 @@ def log_catchup(job_name, timestamp):
 
 def catch_up_jobs(bot):
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
-    timestamp = now.strftime("%I:%M %p")  # e.g. "07:22 AM"
+    timestamp = now.strftime("%I:%M %p")  # e.g. "07:43 AM"
     hour = now.hour
     minute = now.minute
 
     if hour > 4 or (hour == 4 and minute >= 30):
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Good Morning")
-        good_morning_job(bot)
-        seasonal_job(bot)
+        msg = good_morning_message()
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Good Morning\n\n{msg}")
         log_catchup("Good Morning", timestamp)
+        seasonal = seasonal_message()
+        if seasonal:
+            bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Seasonal\n\n{seasonal}")
+            log_catchup("Seasonal", timestamp)
 
     if hour >= 6:
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Verse of the Day")
-        verse_of_the_day_job(bot)
+        msg = verse_of_the_day_message()
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Verse of the Day\n\n{msg}")
         log_catchup("Verse of the Day", timestamp)
 
     if hour >= 7:
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Daily Scripture")
-        daily_scripture_job(bot)
+        msg = daily_scripture_message()
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Daily Scripture\n\n{msg}")
         log_catchup("Daily Scripture", timestamp)
 
     if hour >= 9:
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Trading Idea")
-        trading_job(bot)
+        msg = trading_message()
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Trading Idea\n\n{msg}")
         log_catchup("Trading Idea", timestamp)
 
     if hour >= 12:
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Motivation Quote")
-        quote_job(bot)
+        msg = quote_message()
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Motivation Quote\n\n{msg}")
         log_catchup("Motivation Quote", timestamp)
 
     if hour >= 15:
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Prayer")
-        prayer_job(bot)
+        msg = prayer_message()
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Prayer\n\n{msg}")
         log_catchup("Prayer", timestamp)
 
     if hour >= 18:
-        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Reminder")
-        reminder_job(bot)
+        msg = reminder_message()
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Reminder\n\n{msg}")
         log_catchup("Reminder", timestamp)
 
 # --- Main ---
@@ -175,14 +174,14 @@ def main():
     catch_up_jobs(updater.bot)
 
     # Daily rhythm
-    scheduler.add_job(good_morning_job, 'cron', hour=4, minute=30, args=[updater.bot])
-    scheduler.add_job(verse_of_the_day_job, 'cron', hour=6, minute=0, args=[updater.bot])
-    scheduler.add_job(daily_scripture_job, 'cron', hour=7, minute=0, args=[updater.bot])
-    scheduler.add_job(trading_job, 'cron', hour=9, minute=0, args=[updater.bot])
-    scheduler.add_job(quote_job, 'cron', hour=12, minute=0, args=[updater.bot])
-    scheduler.add_job(prayer_job, 'cron', hour=15, minute=0, args=[updater.bot])
-    scheduler.add_job(reminder_job, 'cron', hour=18, minute=0, args=[updater.bot])
-    scheduler.add_job(seasonal_job, 'cron', hour=4, minute=30, args=[updater.bot])
+    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, good_morning_message()), 'cron', hour=4, minute=30)
+    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, verse_of_the_day_message()), 'cron', hour=6, minute=0)
+    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, daily_scripture_message()), 'cron', hour=7, minute=0)
+    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, trading_message()), 'cron', hour=9, minute=0)
+    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, quote_message()), 'cron', hour=12, minute=0)
+    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, prayer_message()), 'cron', hour=15, minute=0)
+    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, reminder_message()), 'cron', hour=18, minute=0)
+    scheduler.add_job(lambda ctx: updater.bot.send_message(CHAT_ID, seasonal_message()), 'cron', hour=4, minute=30)
 
     scheduler.start()
 
