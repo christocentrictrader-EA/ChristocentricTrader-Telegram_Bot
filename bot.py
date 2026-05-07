@@ -222,6 +222,7 @@ def main():
         port=PORT,
         url_path=BOT_TOKEN,
         webhook_url=f"{APP_URL}/{BOT_TOKEN}"
+    )
 
     updater.idle()
 
