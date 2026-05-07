@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+APP_URL = os.getenv("APP_URL")  # e.g. https://your-app.up.railway.app
+PORT = int(os.environ.get("PORT", 8443))
 
 # Load content.json
 with open("content.json", "r") as f:
@@ -113,10 +115,10 @@ def main():
     updater = Updater(BOT_TOKEN)
     scheduler = BackgroundScheduler(timezone=pytz.timezone("Africa/Lagos"))
 
-    # --- Startup test message ---
+    # Startup test message
     updater.bot.send_message(
         chat_id=CHAT_ID,
-        text="✅ ChristocentricTraderBot is live and running!"
+        text="✅ ChristocentricTraderBot is live via webhook!"
     )
 
     # Daily rhythm
@@ -131,9 +133,16 @@ def main():
     # Seasonal check
     scheduler.add_job(seasonal_job, 'cron', hour=4, minute=30, args=[updater.bot])
 
-    # --- Keep everything running ---
     scheduler.start()
-    updater.start_polling()
+
+    # --- Webhook setup ---
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=BOT_TOKEN,
+        webhook_url=f"{APP_URL}/{BOT_TOKEN}"
+    )
+
     updater.idle()
 
 if __name__ == "__main__":
