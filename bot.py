@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-APP_URL = os.getenv("APP_URL")  # e.g. https://your-app.up.railway.app
+APP_URL = os.getenv("APP_URL")  # e.g. https://worker-production-25e7.up.railway.app
 PORT = int(os.environ.get("PORT", 8443))
 
 # Load content.json
@@ -30,7 +30,8 @@ except FileNotFoundError:
         "verses_used": [],
         "quotes_used": [],
         "prayers_used": [],
-        "reminders_used": []
+        "reminders_used": [],
+        "catchup_log": []   # <-- new section for catch-up tracking
     }
 
 # --- Utility: rotation with logging ---
@@ -110,6 +111,55 @@ def seasonal_job(context):
             context.bot.send_message(chat_id=CHAT_ID, text=message)
             return
 
+# --- Catch-Up Logic ---
+def log_catchup(job_name, timestamp):
+    log_entry = {"job": job_name, "time": timestamp}
+    log["catchup_log"].append(log_entry)
+    with open("log.json", "w") as f:
+        json.dump(log, f)
+
+def catch_up_jobs(bot):
+    now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
+    timestamp = now.strftime("%I:%M %p")  # e.g. "07:22 AM"
+    hour = now.hour
+    minute = now.minute
+
+    if hour > 4 or (hour == 4 and minute >= 30):
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Good Morning")
+        good_morning_job(bot)
+        seasonal_job(bot)
+        log_catchup("Good Morning", timestamp)
+
+    if hour >= 6:
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Verse of the Day")
+        verse_of_the_day_job(bot)
+        log_catchup("Verse of the Day", timestamp)
+
+    if hour >= 7:
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Daily Scripture")
+        daily_scripture_job(bot)
+        log_catchup("Daily Scripture", timestamp)
+
+    if hour >= 9:
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Trading Idea")
+        trading_job(bot)
+        log_catchup("Trading Idea", timestamp)
+
+    if hour >= 12:
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Motivation Quote")
+        quote_job(bot)
+        log_catchup("Motivation Quote", timestamp)
+
+    if hour >= 15:
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Prayer")
+        prayer_job(bot)
+        log_catchup("Prayer", timestamp)
+
+    if hour >= 18:
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp}: Reminder")
+        reminder_job(bot)
+        log_catchup("Reminder", timestamp)
+
 # --- Main ---
 def main():
     updater = Updater(BOT_TOKEN)
@@ -121,6 +171,9 @@ def main():
         text="✅ ChristocentricTraderBot is live via webhook!"
     )
 
+    # --- Catch up missed jobs ---
+    catch_up_jobs(updater.bot)
+
     # Daily rhythm
     scheduler.add_job(good_morning_job, 'cron', hour=4, minute=30, args=[updater.bot])
     scheduler.add_job(verse_of_the_day_job, 'cron', hour=6, minute=0, args=[updater.bot])
@@ -129,13 +182,11 @@ def main():
     scheduler.add_job(quote_job, 'cron', hour=12, minute=0, args=[updater.bot])
     scheduler.add_job(prayer_job, 'cron', hour=15, minute=0, args=[updater.bot])
     scheduler.add_job(reminder_job, 'cron', hour=18, minute=0, args=[updater.bot])
-
-    # Seasonal check
     scheduler.add_job(seasonal_job, 'cron', hour=4, minute=30, args=[updater.bot])
 
     scheduler.start()
 
-    # --- Webhook setup ---
+    # Webhook setup
     updater.start_webhook(
         listen="0.0.0.0",
         port=PORT,
