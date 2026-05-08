@@ -54,93 +54,56 @@ def rotate_and_log(section, log_key):
 # --- Message builders with Markdown formatting ---
 def good_morning_message():
     gm = rotate_and_log("good_morning", "gm_used")
-    return (
-        "*🌺 Good Morning!*\n"
-        "_"+gm["message"]+"_ \n"
-        "'reference': __"+gm["reference"]+"__"
-    )
+    return "*🌺 Good Morning!*\n_"+gm["message"]+"_"
 
 def verse_of_the_day_message():
-    try:
-        ref = rotate_and_log("verses", "verses_used")
-        response = requests.get(f"https://bible-api.com/{ref.replace(' ', '+')}", timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        verse_text = data["text"]
-        return (
-            "*✨ Verse of the Day:*\n"
-            "'verse': _"+verse_text.strip()+"_\n"
-            "'reference': __"+ref+"__"
-        )
-    except Exception:
-        verse = rotate_and_log("verses", "verses_used")
-        return (
-            "*✨ Verse of the Day (Fallback):*\n"
-            "'verse': _"+verse+"_"
-        )
+    verse = rotate_and_log("verses", "verses_used")
+    return (
+        "*✨ Verse of the Day:*\n"
+        "'text': _"+verse["text"]+"_ \n"
+        "'reference': __"+verse["reference"]+"__\n"
+        "'theme': _"+verse["theme"]+"_"
+    )
 
 def daily_scripture_message():
-    scripture = rotate_and_log("daily_scriptures", "verses_used")
+    s = rotate_and_log("daily_scriptures", "verses_used")
     return (
         "*📖 Daily Scripture:*\n"
-        "'scripture': _"+scripture["text"]+"_ \n"
-        "'reference': __"+scripture["scripture"]+"__\n"
-        "'reflection': _"+scripture["reflection"]+"_"
+        "'day': __"+s["day"]+"__\n"
+        "'scripture': __"+s["scripture"]+"__\n"
+        "'text': _"+s["text"]+"_ \n"
+        "'reflection': _"+s["reflection"]+"_"
     )
 
 def trading_message():
-    idea = rotate_and_log("trading", "trading_used")
+    t = rotate_and_log("trading", "trading_used")
     return (
         "*💹 Trading Idea:*\n"
-        "'idea': _"+idea["idea"]+"_ \n"
-        "'scripture': __"+idea["scripture"]+"__"
+        "'idea': _"+t["idea"]+"_ \n"
+        "'scripture': __"+t["scripture"]+"__"
     )
 
 def quote_message():
-    quote_obj = rotate_and_log("quotes", "quotes_used")
+    q = rotate_and_log("quotes", "quotes_used")
     return (
         "*🌟 Motivation:*\n"
-        "'quote': _"+quote_obj["quote"]+"_ \n"
-        "'author': __"+quote_obj["author"]+"__"
+        "'quote': _"+q["quote"]+"_ \n"
+        "'author': __"+q["author"]+"__"
     )
 
 def prayer_message():
-    prayer = rotate_and_log("prayers", "prayers_used")
-    return (
-        "*🙏 Prayer:*\n"
-        "_"+prayer+"_"
-    )
+    p = rotate_and_log("prayers", "prayers_used")
+    return "*🙏 "+p["title"]+"*\n_"+p["prayer"]+"_"
 
 def reminder_message():
-    reminder = rotate_and_log("reminders", "reminders_used")
-    return (
-        "*⏰ Reminder:*\n"
-        "_"+reminder+"_"
-    )
-
-# --- Seasonal Emojis ---
-seasonal_emojis = {
-    "Christmas": "🎄✨",
-    "New Year": "🎉🥂",
-    "Easter": "✝️🌅",
-    "Ramadan": "🌙🕌",
-    "Thanksgiving": "🦃🍂",
-    "Valentine": "❤️🌹"
-}
+    r = rotate_and_log("reminders", "reminders_used")
+    return "*⏰ Reminder:*\n_"+r["reminder"]+"_"
 
 def seasonal_message():
     today = datetime.date.today().strftime("%m-%d")
     for event in content.get("seasonal", []):
         if event["date"] == today:
-            emojis = "✨"
-            for keyword, emoji in seasonal_emojis.items():
-                if keyword.lower() in event["message"].lower():
-                    emojis = emoji
-                    break
-            return (
-                "*"+emojis+" Seasonal Message:*\n"
-                "_"+event["message"]+"_"
-            )
+            return "*✨ Seasonal Message:*\n_"+event["message"]+"_"
     return None
 
 # --- Catch-Up Logic ---
