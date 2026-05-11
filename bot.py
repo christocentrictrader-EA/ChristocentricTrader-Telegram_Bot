@@ -1,7 +1,6 @@
 import pytz
 import os
 import json
-import random
 import datetime
 import requests
 from telegram.ext import Updater
@@ -36,30 +35,24 @@ except FileNotFoundError:
         "startup_done": ""
     }
 
-# --- Utility: rotation with logging ---
-def rotate_and_log(section, log_key):
-    items = content.get(section, [])
-    if not items:
-        return {"message": "⚠️ No content available."}
-    unused = [i for i in range(len(items)) if i not in log[log_key]]
-    if not unused:
-        log[log_key] = []
-        unused = list(range(len(items)))
-    choice = random.choice(unused)
-    log[log_key].append(choice)
-    with open("log.json", "w") as f:
-        json.dump(log, f)
-    return items[choice]
-
-# --- Message builders with Markdown formatting + timestamps ---
+# --- Deterministic selection for Good Morning ---
 def good_morning_message():
-    gm = rotate_and_log("good_morning", "gm_used")
+    gms = content.get("good_morning", [])
+    if not gms:
+        return "*🌺 Good Morning!*\n_No content available._"
+    today_index = datetime.datetime.now(pytz.timezone("Africa/Lagos")).weekday()
+    gm = gms[today_index % len(gms)]
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
     timestamp = now.strftime("%I:%M %p")
     return "*🌺 Good Morning!*\n_"+gm["message"]+"_ \n_Posted at "+timestamp+"_"
 
+# --- Verse of the Day (still rotates) ---
 def verse_of_the_day_message():
-    verse = rotate_and_log("verses", "verses_used")
+    verses = content.get("verses", [])
+    if not verses:
+        return "*✨ Verse of the Day:*\n_No content available._"
+    today_index = datetime.datetime.now(pytz.timezone("Africa/Lagos")).weekday()
+    verse = verses[today_index % len(verses)]
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
     timestamp = now.strftime("%I:%M %p")
     return (
@@ -70,53 +63,79 @@ def verse_of_the_day_message():
         "_Posted at "+timestamp+"_"
     )
 
+# --- Daily Scripture (match actual weekday) ---
 def daily_scripture_message():
-    s = rotate_and_log("daily_scriptures", "verses_used")
-    now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
-    timestamp = now.strftime("%I:%M %p")
-    return (
-        "*📖 Daily Scripture:*\n"
-        "'day': __"+s["day"]+"__\n"
-        "'scripture': __"+s["scripture"]+"__\n"
-        "'text': _"+s["text"]+"_ \n"
-        "'reflection': _"+s["reflection"]+"_ \n"
-        "_Posted at "+timestamp+"_"
-    )
+    today = datetime.datetime.now(pytz.timezone("Africa/Lagos")).strftime("%A")
+    scriptures = content.get("daily_scriptures", [])
+    for s in scriptures:
+        if s["day"].lower() == today.lower():
+            now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
+            timestamp = now.strftime("%I:%M %p")
+            return (
+                "*📖 Daily Scripture:*\n"
+                "'day': __"+s["day"]+"__\n"
+                "'scripture': __"+s["scripture"]+"__\n"
+                "'text': _"+s["text"]+"_ \n"
+                "'reflection': _"+s["reflection"]+"_ \n"
+                "_Posted at "+timestamp+"_"
+            )
+    return "*📖 Daily Scripture:*\n_No scripture found for today._"
 
+# --- Trading Idea ---
 def trading_message():
-    t = rotate_and_log("trading", "trading_used")
+    t = content.get("trading", [])
+    if not t:
+        return "*💹 Trading Idea:*\n_No content available._"
+    today_index = datetime.datetime.now(pytz.timezone("Africa/Lagos")).weekday()
+    idea = t[today_index % len(t)]
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
     timestamp = now.strftime("%I:%M %p")
     return (
         "*💹 Trading Idea:*\n"
-        "'idea': _"+t["idea"]+"_ \n"
-        "'scripture': __"+t["scripture"]+"__\n"
+        "'idea': _"+idea["idea"]+"_ \n"
+        "'scripture': __"+idea["scripture"]+"__\n"
         "_Posted at "+timestamp+"_"
     )
 
+# --- Quote ---
 def quote_message():
-    q = rotate_and_log("quotes", "quotes_used")
+    q = content.get("quotes", [])
+    if not q:
+        return "*🌟 Motivation:*\n_No content available._"
+    today_index = datetime.datetime.now(pytz.timezone("Africa/Lagos")).weekday()
+    quote = q[today_index % len(q)]
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
     timestamp = now.strftime("%I:%M %p")
     return (
         "*🌟 Motivation:*\n"
-        "'quote': _"+q["quote"]+"_ \n"
-        "'author': __"+q["author"]+"__\n"
+        "'quote': _"+quote["quote"]+"_ \n"
+        "'author': __"+quote["author"]+"__\n"
         "_Posted at "+timestamp+"_"
     )
 
+# --- Prayer ---
 def prayer_message():
-    p = rotate_and_log("prayers", "prayers_used")
+    p = content.get("prayers", [])
+    if not p:
+        return "*🙏 Prayer:*\n_No content available._"
+    today_index = datetime.datetime.now(pytz.timezone("Africa/Lagos")).weekday()
+    prayer = p[today_index % len(p)]
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
     timestamp = now.strftime("%I:%M %p")
-    return "*🙏 "+p["title"]+"*\n_"+p["prayer"]+"_ \n_Posted at "+timestamp+"_"
+    return "*🙏 "+prayer["title"]+"*\n_"+prayer["prayer"]+"_ \n_Posted at "+timestamp+"_"
 
+# --- Reminder ---
 def reminder_message():
-    r = rotate_and_log("reminders", "reminders_used")
+    r = content.get("reminders", [])
+    if not r:
+        return "*⏰ Reminder:*\n_No content available._"
+    today_index = datetime.datetime.now(pytz.timezone("Africa/Lagos")).weekday()
+    reminder = r[today_index % len(r)]
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
     timestamp = now.strftime("%I:%M %p")
-    return "*⏰ Reminder:*\n_"+r["reminder"]+"_ \n_Posted at "+timestamp+"_"
+    return "*⏰ Reminder:*\n_"+reminder["reminder"]+"_ \n_Posted at "+timestamp+"_"
 
+# --- Seasonal ---
 def seasonal_message():
     today = datetime.date.today().strftime("%m-%d")
     now = datetime.datetime.now(pytz.timezone("Africa/Lagos"))
@@ -145,42 +164,23 @@ def catch_up_jobs(bot):
     with open("log.json", "w") as f:
         json.dump(log, f)
 
-    # Good Morning
     if now.hour > 4 or (now.hour == 4 and now.minute >= 30):
         intended = "04:30 AM"
-        bot.send_message(
-            chat_id=CHAT_ID,
-            text=f"⚠️ Catch‑Up at {timestamp} (intended {intended}): Good Morning\n\n{good_morning_message()}",
-            parse_mode="Markdown"
-        )
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp} (intended {intended}): Good Morning\n\n{good_morning_message()}", parse_mode="Markdown")
         log_catchup("Good Morning", timestamp)
         seasonal = seasonal_message()
         if seasonal:
-            bot.send_message(
-                chat_id=CHAT_ID,
-                text=f"⚠️ Catch‑Up at {timestamp} (intended {intended}): Seasonal\n\n{seasonal}",
-                parse_mode="Markdown"
-            )
+            bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp} (intended {intended}): Seasonal\n\n{seasonal}", parse_mode="Markdown")
             log_catchup("Seasonal", timestamp)
 
-    # Verse of the Day
     if now.hour >= 6:
         intended = "06:00 AM"
-        bot.send_message(
-            chat_id=CHAT_ID,
-            text=f"⚠️ Catch‑Up at {timestamp} (intended {intended}): Verse of the Day\n\n{verse_of_the_day_message()}",
-            parse_mode="Markdown"
-        )
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp} (intended {intended}): Verse of the Day\n\n{verse_of_the_day_message()}", parse_mode="Markdown")
         log_catchup("Verse of the Day", timestamp)
 
-    # Daily Scripture
     if now.hour >= 7:
         intended = "07:00 AM"
-        bot.send_message(
-            chat_id=CHAT_ID,
-            text=f"⚠️ Catch‑Up at {timestamp} (intended {intended}): Daily Scripture\n\n{daily_scripture_message()}",
-            parse_mode="Markdown"
-        )
+        bot.send_message(chat_id=CHAT_ID, text=f"⚠️ Catch‑Up at {timestamp} (intended {intended}): Daily Scripture\n\n{daily_scripture_message()}", parse_mode="Markdown")
         log_catchup("Daily Scripture", timestamp)
 
 # --- Midnight Reset ---
@@ -195,10 +195,15 @@ def main():
     updater = Updater(BOT_TOKEN)
     scheduler = BackgroundScheduler(timezone=pytz.timezone("Africa/Lagos"))
 
-    # Startup message safeguard
+    today = datetime.datetime.now
+# Startup message safeguard
     today = datetime.datetime.now(pytz.timezone("Africa/Lagos")).strftime("%Y-%m-%d")
     if log.get("startup_done") != today:
-        updater.bot.send_message(chat_id=CHAT_ID, text="✅ ChristocentricTraderBot is live via webhook!", parse_mode="Markdown")
+        updater.bot.send_message(
+            chat_id=CHAT_ID,
+            text="✅ ChristocentricTraderBot is live via webhook!",
+            parse_mode="Markdown"
+        )
         log["startup_done"] = today
         with open("log.json", "w") as f:
             json.dump(log, f)
